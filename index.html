@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216">
+<title>Kippivaaka</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #181d23;
+    --panel-2: #20262e;
+    --line: #2c343e;
+    --text: #e8edf2;
+    --muted: #8d98a5;
+    --accent: #4fb3ff;
+    --ok: #3ccf7a;
+    --warn: #ffb547;
+    --err: #ff5d5d;
+    --lift: rgba(255, 181, 71, 0.10);
+    --lock: rgba(60, 207, 122, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    min-height: 100vh;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 18px; margin: 0; flex: 1; letter-spacing: 0.02em; }
+  .conn { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); }
+  .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
+  .dot.err { background: var(--err); }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  main { padding: 16px; max-width: 720px; margin: 0 auto; }
+  .view { display: none; }
+  .view.active { display: block; }
+  button {
+    font: inherit; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #04111d; border-color: var(--accent); font-weight: 600; }
+  button.big { width: 100%; padding: 18px; font-size: 20px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.small { padding: 6px 12px; font-size: 14px; border-radius: 8px; }
+  button.sel { border-color: var(--accent); color: var(--accent); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .banner { border-radius: 12px; padding: 12px 14px; margin-bottom: 14px; font-size: 15px; line-height: 1.4; }
+  .banner.err { background: rgba(255, 93, 93, 0.12); border: 1px solid var(--err); }
+  .banner.warn { background: rgba(255, 181, 71, 0.12); border: 1px solid var(--warn); }
+  .banner.info { background: rgba(79, 179, 255, 0.10); border: 1px solid var(--accent); }
+  .hidden { display: none !important; }
+  .weight { text-align: center; padding: 22px 8px 10px; }
+  .weight .value {
+    font-size: clamp(84px, 30vw, 160px); font-weight: 700; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.02em;
+  }
+  .weight .unit { font-size: 0.35em; color: var(--muted); font-weight: 500; margin-left: 6px; }
+  .weight .label { color: var(--muted); font-size: 15px; margin-top: 8px; min-height: 1.3em; }
+  .weight.waiting .value { color: var(--muted); }
+  .pressure { display: flex; justify-content: space-between; align-items: baseline; }
+  .pressure .value { font-size: 44px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pressure .unit { color: var(--muted); font-size: 18px; margin-left: 4px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .pill { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 15px; letter-spacing: 0.05em; background: var(--panel-2); color: var(--muted); }
+  .pill.lift { background: rgba(255, 181, 71, 0.18); color: var(--warn); }
+  .pill.lock { background: rgba(60, 207, 122, 0.18); color: var(--ok); }
+  .pill.sim { background: rgba(79, 179, 255, 0.16); color: var(--accent); font-size: 12px; padding: 4px 10px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  nav {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 5;
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    background: var(--panel); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav button { border: 0; border-radius: 0; background: none; padding: 14px 4px; font-size: 14px; color: var(--muted); }
+  nav button.active { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+  .chart-wrap { position: relative; height: min(58vh, 460px); touch-action: pan-y; user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .readout { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 13px; pointer-events: none; white-space: nowrap; }
+  .ranges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .step { display: flex; gap: 12px; }
+  .step .num { flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--panel-2); display: grid; place-items: center; font-weight: 700; }
+  .step h3 { margin: 4px 0 6px; font-size: 17px; }
+  .step p { margin: 0 0 12px; color: var(--muted); font-size: 15px; line-height: 1.4; }
+  input[type=number] {
+    font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; width: 100%;
+  }
+  .settings-row { display: grid; grid-template-columns: 1fr 120px; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .settings-row:last-child { border-bottom: 0; }
+  .settings-row label { font-size: 15px; }
+  .settings-row small { display: block; color: var(--muted); font-size: 12px; }
+  .settings-row input.changed { border-color: var(--warn); }
+  dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+  dl.kv dt { color: var(--muted); }
+  dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(86px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px;
+    font-size: 15px; z-index: 10; max-width: calc(100% - 32px); opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+  h2 { font-size: 16px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kippivaaka</h1>
+  <div class="conn"><span id="connDot" class="dot"></span><span id="connText">Ei yhteyttä</span></div>
+</header>
+
+<main>
+  <div id="noBluetooth" class="banner err hidden">
+    Tämä selain ei tue Web Bluetoothia. Käytä Android-puhelimen <b>Chrome</b>-selainta.
+    iPhonella sivu ei toimi Safarissa eikä muissakaan iOS-selaimissa.
+    Voit silti kokeilla sivua demotilassa.
+  </div>
+
+  <div id="connectCard" class="card">
+    <div class="row">
+      <button id="connectBtn" class="primary grow">Yhdistä vaakaan</button>
+      <button id="demoBtn">Demo</button>
+    </div>
+    <p class="muted" style="margin:10px 0 0">Yhdistäminen pitää tehdä joka kerta, kun sivu avataan.</p>
+  </div>
+
+  <!-- Päänäkymä -->
+  <section id="view-main" class="view active">
+    <div id="faults"></div>
+    <div class="card weight" id="weightCard">
+      <div class="value" id="weightValue">–</div>
+      <div class="label" id="weightLabel">Ei mittausta</div>
+    </div>
+    <div class="card">
+      <div class="pressure">
+        <div><span class="value" id="pressureValue">–</span><span class="unit">bar</span></div>
+        <div style="text-align:right">
+          <span class="pill" id="statePill">–</span>
+          <div class="muted" id="currentValue" style="margin-top:6px">– mA</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="muted grow" id="liveWeight"></span>
+        <span class="pill sim hidden" id="simPill">SIMULAATIO</span>
+      </div>
+    </div>
+    <button id="tareBtn" class="big" disabled>Taaraa</button>
+    <p class="muted" style="text-align:center">Taaraus onnistuu, kun tyhjä lava on nostettu irti ja paine on vakaa.</p>
+  </section>
+
+  <!-- Käyrä -->
+  <section id="view-chart" class="view">
+    <div class="card">
+      <div class="ranges" id="ranges"></div>
+      <div class="chart-wrap" id="chartWrap">
+        <canvas id="chart"></canvas>
+        <div class="readout hidden" id="readout"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="muted grow" id="historyInfo"></span>
+        <button class="small hidden" id="liveBtn">Palaa nykyhetkeen</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Tallenna data</h2>
+      <div class="row">
+        <button id="csvViewBtn" class="grow">CSV: näkyvä jakso</button>
+        <button id="csvAllBtn" class="grow">CSV: kaikki</button>
+      </div>
+      <p class="muted">Sivu tallentaa mittauksen (5 kertaa sekunnissa) puhelimen muistiin aina, kun yhteys on päällä. Viimeiset 24 tuntia säilyvät, vaikka sivu suljetaan. CSV aukeaa Excelissä (puolipiste-erotin, desimaalipilkku).</p>
+      <button id="clearBtn" class="small">Tyhjennä historia</button>
+    </div>
+  </section>
+
+  <!-- Kalibrointi -->
+  <section id="view-cal" class="view">
+    <div class="card">
+      <div class="step">
+        <div class="num">1</div>
+        <div class="grow">
+          <h3>Tara</h3>
+          <p>Nosta tyhjä lava irti rungosta ja pysäytä nosto. Odota, että tila näyttää VAKAA, ja tallenna tara.</p>
+          <div class="row" style="margin-bottom:12px">
+            <span class="pill cal-state">–</span>
+            <span class="muted cal-pressure"></span>
+          </div>
+          <button id="calTareBtn" class="primary" disabled>Tallenna tara</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="step">
+        <div class="num">2</div>
+        <div class="grow">
+          <h3>Tunnettu kuorma</h3>
+          <p>Laske lava, lastaa punnittu kuorma ja nosta lava irti rungosta. Syötä kuorman paino kilogrammoina ja tallenna, kun tila on VAKAA.</p>
+          <input type="number" id="calKg" inputmode="numeric" placeholder="Kuorman paino, kg" min="1" step="10">
+          <div class="row" style="margin:12px 0">
+            <span class="pill cal-state">–</span>
+            <span class="muted cal-pressure"></span>
+          </div>
+          <button id="calLoadBtn" class="primary" disabled>Tallenna kalibrointi</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Tallennetut arvot</h2>
+      <dl class="kv">
+        <dt>Tarapaine p0</dt><dd id="calP0">–</dd>
+        <dt>Kerroin k</dt><dd id="calK">–</dd>
+      </dl>
+      <button id="resetCalBtn" class="small" style="margin-top:14px">Nollaa kalibrointi</button>
+    </div>
+  </section>
+
+  <!-- Asetukset -->
+  <section id="view-settings" class="view">
+    <div class="card">
+      <h2>Asetukset</h2>
+      <div id="settingsForm"><p class="muted">Yhdistä vaakaan nähdäksesi asetukset.</p></div>
+      <div class="row" style="margin-top:14px">
+        <button id="saveSettingsBtn" class="primary grow" disabled>Tallenna muutokset</button>
+        <button id="dispTestBtn">Näyttötesti</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button data-view="main" class="active">Mittaus</button>
+  <button data-view="chart">Käyrä</button>
+  <button data-view="cal">Kalibrointi</button>
+  <button data-view="settings">Asetukset</button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// Must match firmware/include/config.h
+const UUID = {
+  service:     '8f3c1a20-5d4e-4b7a-9c61-2e7f0d3b9a10',
+  measurement: '8f3c1a20-5d4e-4b7a-9c61-2e7f0d3b9a11',
+  command:     '8f3c1a20-5d4e-4b7a-9c61-2e7f0d3b9a12',
+  settings:    '8f3c1a20-5d4e-4b7a-9c61-2e7f0d3b9a13',
+  reply:       '8f3c1a20-5d4e-4b7a-9c61-2e7f0d3b9a14',
+};
+
+const FLAG = { SENSOR: 1, OVERRANGE: 2, INA: 4, NOT_CAL: 8, NO_LOCK: 16, STABLE: 32, SIM: 64 };
+const STATE_NAMES = ['ALAS', 'NOSTO', 'LUKITTU'];
+const NO_LOCK_RAW = -32768;
+
+const SETTING_META = {
+  lift_min_bar:     { label: 'Noston raja', unit: 'bar', step: 0.5, help: 'Paine, jonka yli lava katsotaan nostetuksi' },
+  spike_ignore_ms:  { label: 'Irtoamispiikin ohitus', unit: 'ms', step: 50 },
+  stable_window_ms: { label: 'Vakausikkuna', unit: 'ms', step: 100 },
+  stable_band_bar:  { label: 'Vakauskaista ±', unit: 'bar', step: 0.1 },
+  down_settle_ms:   { label: 'Alhaalla ennen uutta mittausta', unit: 'ms', step: 500 },
+  avg_window_ms:    { label: 'Näytön keskiarvo', unit: 'ms', step: 50 },
+  shunt_ohm:        { label: 'Shunttivastus', unit: 'Ω', step: 0.01 },
+  range_bar:        { label: 'Anturin mittausalue', unit: 'bar', step: 10 },
+  brightness:       { label: 'Näytön kirkkaus', unit: '%', step: 10, help: 'Vaatii OE-pinnin kytkennän' },
+  sim:              { label: 'Simulaatio', unit: '0/1', step: 1, help: '1 = generoitu nostosykli, 0 = oikea anturi' },
+  disp_mode:        { label: 'Näyttötyyppi', unit: '0/1', step: 1, help: '0 = staattinen, 1 = multipleksattu' },
+  disp_anode:       { label: 'Yhteinen anodi', unit: '0/1', step: 1, help: '1 = anodi, 0 = katodi' },
+  disp_reverse:     { label: 'Numerot käänteisesti', unit: '0/1', step: 1 },
+  disp_swap:        { label: 'Vaihda näyttöjen paikat', unit: '0/1', step: 1 },
+};
+
+const $ = (id) => document.getElementById(id);
+const fmt1 = (v) => v.toFixed(1).replace('.', ',');
+
+// ---------------------------------------------------------------------------
+// UI helpers
+// ---------------------------------------------------------------------------
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+function setConn(kind, text) {
+  $('connDot').className = 'dot ' + kind;
+  $('connText').textContent = text;
+}
+
+document.querySelectorAll('nav button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
+    if (btn.dataset.view === 'chart') chart.resize();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Device link: real BLE or the built-in demo
+// ---------------------------------------------------------------------------
+const link = {
+  mode: null,          // 'ble' | 'demo' | null
+  device: null,
+  chars: {},
+  gattQueue: Promise.resolve(),
+  retryDelay: 500,
+  retryTimer: 0,
+  settings: null,
+  last: null,
+};
+
+function gatt(fn) {
+  const p = link.gattQueue.then(fn);
+  link.gattQueue = p.catch(() => {});
+  return p;
+}
+
+async function connectBle() {
+  if (!navigator.bluetooth) return;
+  try {
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [UUID.service] }, { name: 'Kippivaaka' }],
+      optionalServices: [UUID.service],
+    });
+    stopDemo();
+    link.device = device;
+    link.mode = 'ble';
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    await openGatt();
+  } catch (e) {
+    if (e.name !== 'NotFoundError') toast('Yhdistäminen epäonnistui: ' + e.message);
+  }
+}
+
+async function openGatt() {
+  setConn('busy', 'Yhdistetään…');
+  const server = await link.device.gatt.connect();
+  const service = await server.getPrimaryService(UUID.service);
+  link.chars = {};
+  for (const key of ['measurement', 'command', 'settings', 'reply']) {
+    link.chars[key] = await service.getCharacteristic(UUID[key]);
+  }
+  link.chars.measurement.addEventListener('characteristicvaluechanged', (e) => onPacket(e.target.value));
+  link.chars.reply.addEventListener('characteristicvaluechanged', (e) => onReply(new TextDecoder().decode(e.target.value)));
+  await link.chars.measurement.startNotifications();
+  await link.chars.reply.startNotifications();
+  link.retryDelay = 500;
+  setConn('ok', 'Yhdistetty');
+  $('connectCard').classList.add('hidden');
+  await readSettings();
+}
+
+function onDisconnected() {
+  if (link.mode !== 'ble') return;
+  setConn('err', 'Yhteys katkesi');
+  scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  clearTimeout(link.retryTimer);
+  const delay = link.retryDelay;
+  setConn('busy', `Yhdistetään uudelleen (${Math.round(delay / 1000) || 1} s)…`);
+  link.retryTimer = setTimeout(async () => {
+    try {
+      await openGatt();
+    } catch (e) {
+      link.retryDelay = Math.min(link.retryDelay * 2, 10000);
+      scheduleReconnect();
+    }
+  }, delay);
+}
+
+async function readSettings() {
+  if (link.mode === 'demo') return onSettings(demo.settingsJson());
+  if (link.mode !== 'ble') return;
+  try {
+    const value = await gatt(() => link.chars.settings.readValue());
+    onSettings(JSON.parse(new TextDecoder().decode(value)));
+  } catch (e) {
+    toast('Asetusten luku epäonnistui');
+  }
+}
+
+async function sendCommand(text) {
+  if (link.mode === 'demo') return demo.command(text);
+  if (link.mode !== 'ble') return toast('Ei yhteyttä');
+  try {
+    await gatt(() => link.chars.command.writeValueWithResponse(new TextEncoder().encode(text)));
+  } catch (e) {
+    toast('Komento epäonnistui: ' + e.message);
+  }
+}
+
+const REPLY_TEXT = {
+  'ERR NOT_STABLE': 'Paine ei ole vakaa – pysäytä lava nostettuna ja odota',
+  'ERR LOW_PRESSURE': 'Paine on liian lähellä taraa – onko kuorma lavalla?',
+  'ERR RANGE': 'Arvo on sallitun alueen ulkopuolella',
+  'ERR UNKNOWN_KEY': 'Tuntematon asetus',
+  'ERR SYNTAX': 'Virheellinen komento',
+  'OK RESETCAL': 'Kalibrointi nollattu',
+  'OK DISPTEST': 'Näyttötesti käynnissä',
+};
+
+function onReply(text) {
+  let msg = REPLY_TEXT[text];
+  const arg = (text.split(' ')[2] || '').replace('.', ',');
+  if (!msg && text.startsWith('OK TARE')) msg = 'Tara tallennettu: ' + arg + ' bar';
+  if (!msg && text.startsWith('OK CAL')) msg = 'Kalibrointi tallennettu: k = ' + arg + ' kg/bar';
+  if (!msg && text === 'OK SET') msg = 'Asetus tallennettu';
+  toast(msg || text);
+  if (text.startsWith('OK') && text !== 'OK DISPTEST') readSettings();
+}
+
+// ---------------------------------------------------------------------------
+// Measurement handling
+// ---------------------------------------------------------------------------
+function decodePacket(dv) {
+  const lockedRaw = dv.getInt16(8, true);
+  return {
+    t: Date.now(),
+    currentMa: dv.getUint16(0, true) / 1000,
+    pressure: dv.getInt16(2, true) / 10,
+    liveKg: dv.getInt32(4, true),
+    lockedKg: lockedRaw === NO_LOCK_RAW ? null : lockedRaw * 10,
+    state: dv.getUint8(10),
+    flags: dv.getUint8(11),
+  };
+}
+
+function onPacket(dv) {
+  const m = decodePacket(dv);
+  link.last = m;
+  history.add(m);
+  renderMeasurement(m);
+}
+
+let lastFaultHtml = '';
+function renderMeasurement(m) {
+  const f = m.flags;
+  const sensorBad = f & (FLAG.SENSOR | FLAG.INA);
+
+  // Weight
+  const card = $('weightCard');
+  let value = '–', label = '';
+  if (f & FLAG.NOT_CAL) {
+    label = 'Ei kalibroitu – katso Kalibrointi-välilehti';
+  } else if (m.lockedKg !== null) {
+    value = fmt1(m.lockedKg / 1000) + '<span class="unit">t</span>';
+    label = m.state === 2 ? 'Lukittu' : 'Viimeisin lukittu paino';
+  } else {
+    label = m.state === 1 ? 'Mitataan – pysäytä lava' : 'Ei mittausta';
+  }
+  $('weightValue').innerHTML = value;
+  $('weightLabel').textContent = label;
+  card.classList.toggle('waiting', m.lockedKg === null);
+
+  // Pressure and state
+  $('pressureValue').textContent = sensorBad ? '–' : Math.round(m.pressure);
+  $('currentValue').textContent = sensorBad && (f & FLAG.INA) ? '– mA' : m.currentMa.toFixed(2).replace('.', ',') + ' mA';
+  const stable = f & FLAG.STABLE;
+  const pill = $('statePill');
+  pill.textContent = stable && m.state !== 0 ? (m.state === 2 ? 'LUKITTU' : 'VAKAA') : STATE_NAMES[m.state] || '?';
+  pill.className = 'pill' + (m.state === 1 ? ' lift' : m.state === 2 ? ' lock' : '');
+  $('liveWeight').textContent = f & FLAG.NOT_CAL ? '' : 'Live-paino: ' + fmt1(m.liveKg / 1000) + ' t';
+  $('simPill').classList.toggle('hidden', !(f & FLAG.SIM));
+  $('tareBtn').disabled = !stable;
+
+  // Faults
+  const faults = [];
+  if (f & FLAG.INA) faults.push(['err', 'Virtamittari (INA226) ei vastaa. Tarkista I²C-johdotus (SDA 21, SCL 22) ja 3,3 V syöttö.']);
+  if (f & FLAG.SENSOR) faults.push(['err', 'Anturivika tai johdinkatko: virta alle 3,6 mA. Tarkista anturin syöttö (12–15 V) ja kaapeli.']);
+  if (f & FLAG.OVERRANGE) faults.push(['warn', 'Ylialue: virta yli 20,5 mA. Paine ylittää anturin mittausalueen.']);
+  const html = faults.map(([k, t]) => `<div class="banner ${k}">${t}</div>`).join('');
+  if (html !== lastFaultHtml) { $('faults').innerHTML = html; lastFaultHtml = html; }
+
+  // Calibration view
+  const stateText = stable && m.state !== 0 ? 'VAKAA ✓' : STATE_NAMES[m.state];
+  document.querySelectorAll('.cal-state').forEach((el) => {
+    el.textContent = stateText;
+    el.className = 'pill cal-state' + (stable && m.state !== 0 ? ' lock' : m.state === 1 ? ' lift' : '');
+  });
+  document.querySelectorAll('.cal-pressure').forEach((el) => { el.textContent = sensorBad ? '' : fmt1(m.pressure) + ' bar'; });
+  $('calTareBtn').disabled = !stable;
+  $('calLoadBtn').disabled = !stable || !(parseFloat($('calKg').value) > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+function onSettings(s) {
+  link.settings = s;
+  $('calP0').textContent = s.p0 !== undefined ? fmt1(s.p0) + ' bar' : '–';
+  $('calK').textContent = s.k > 0 ? s.k.toFixed(2).replace('.', ',') + ' kg/bar' : 'ei kalibroitu';
+
+  const form = $('settingsForm');
+  form.innerHTML = '';
+  for (const [key, meta] of Object.entries(SETTING_META)) {
+    if (!(key in s)) continue;
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.innerHTML = `<label for="set-${key}">${meta.label} <span class="muted">(${meta.unit})</span>${meta.help ? `<small>${meta.help}</small>` : ''}</label>
+      <input type="number" id="set-${key}" data-key="${key}" step="${meta.step}" value="${s[key]}" inputmode="decimal">`;
+    form.appendChild(row);
+  }
+  form.querySelectorAll('input').forEach((input) => {
+    input.addEventListener('input', () => {
+      input.classList.toggle('changed', parseFloat(input.value) !== link.settings[input.dataset.key]);
+      $('saveSettingsBtn').disabled = !form.querySelector('input.changed');
+    });
+  });
+  $('saveSettingsBtn').disabled = true;
+}
+
+$('saveSettingsBtn').addEventListener('click', async () => {
+  for (const input of $('settingsForm').querySelectorAll('input.changed')) {
+    await sendCommand(`SET ${input.dataset.key} ${input.value}`);
+  }
+});
+$('dispTestBtn').addEventListener('click', () => sendCommand('DISPTEST'));
+
+// ---------------------------------------------------------------------------
+// Buttons
+// ---------------------------------------------------------------------------
+$('connectBtn').addEventListener('click', connectBle);
+$('demoBtn').addEventListener('click', startDemo);
+$('tareBtn').addEventListener('click', () => sendCommand('TARE'));
+$('calTareBtn').addEventListener('click', () => sendCommand('TARE'));
+$('calLoadBtn').addEventListener('click', () => {
+  const kg = parseFloat($('calKg').value);
+  if (kg > 0) sendCommand('CAL ' + kg);
+});
+$('calKg').addEventListener('input', () => { if (link.last) renderMeasurement(link.last); });
+$('resetCalBtn').addEventListener('click', () => {
+  if (confirm('Nollataanko kalibrointi? Tara ja kerroin poistetaan.')) sendCommand('RESETCAL');
+});
+
+// ---------------------------------------------------------------------------
+// History: typed-array ring buffer, persisted to IndexedDB (last 24 h)
+// ---------------------------------------------------------------------------
+const HISTORY_MS = 24 * 3600 * 1000;
+const history = {
+  cap: 24 * 3600 * 5 + 1000,
+  start: 0,
+  count: 0,
+  pending: [],
+  db: null,
+  init() {
+    this.t = new Float64Array(this.cap);
+    this.p = new Float32Array(this.cap);
+    this.ma = new Float32Array(this.cap);
+    this.live = new Float32Array(this.cap);
+    this.locked = new Float32Array(this.cap);
+    this.state = new Uint8Array(this.cap);
+    this.flags = new Uint8Array(this.cap);
+  },
+  idx(i) { return (this.start + i) % this.cap; },
+  add(m, persist = true) {
+    let j;
+    if (this.count < this.cap) {
+      j = this.idx(this.count++);
+    } else {
+      j = this.start;
+      this.start = (this.start + 1) % this.cap;
+    }
+    this.t[j] = m.t; this.p[j] = m.pressure; this.ma[j] = m.currentMa; this.live[j] = m.liveKg;
+    this.locked[j] = m.lockedKg === null ? NaN : m.lockedKg; this.state[j] = m.state; this.flags[j] = m.flags;
+    if (persist) this.pending.push(m);
+  },
+  // First logical index with time >= t
+  lowerBound(t) {
+    let lo = 0, hi = this.count;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.t[this.idx(mid)] < t) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  },
+  clear() {
+    this.start = 0; this.count = 0; this.pending = [];
+    if (this.db) this.db.transaction('chunks', 'readwrite').objectStore('chunks').clear();
+  },
+  async open() {
+    try {
+      this.db = await new Promise((resolve, reject) => {
+        const req = indexedDB.open('kippivaaka', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('chunks', { autoIncrement: true });
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const cutoff = Date.now() - HISTORY_MS;
+      const store = this.db.transaction('chunks', 'readwrite').objectStore('chunks');
+      await new Promise((resolve) => {
+        const cur = store.openCursor();
+        cur.onsuccess = () => {
+          const c = cur.result;
+          if (!c) return resolve();
+          const rows = c.value.rows;
+          if (!rows.length || rows[rows.length - 1].t < cutoff) c.delete();
+          else for (const r of rows) if (r.t >= cutoff) this.add(r, false);
+          c.continue();
+        };
+        cur.onerror = () => resolve();
+      });
+    } catch (e) {
+      this.db = null;
+    }
+    setInterval(() => this.flush(), 10000);
+    addEventListener('pagehide', () => this.flush());
+  },
+  flush() {
+    if (!this.db || !this.pending.length) return;
+    const rows = this.pending;
+    this.pending = [];
+    try { this.db.transaction('chunks', 'readwrite').objectStore('chunks').add({ rows }); } catch (e) { /* ignore */ }
+  },
+};
+history.init();
+
+// ---------------------------------------------------------------------------
+// CSV export
+// ---------------------------------------------------------------------------
+function csvNumber(v, digits) { return Number.isFinite(v) ? v.toFixed(digits).replace('.', ',') : ''; }
+function pad(n, w = 2) { return String(n).padStart(w, '0'); }
+function localTime(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())},${pad(d.getMilliseconds(), 3)}`;
+}
+
+function exportCsv(fromT, toT) {
+  history.flush();
+  const a = history.lowerBound(fromT), b = history.lowerBound(toT + 1);
+  if (b <= a) return toast('Valitulla jaksolla ei ole dataa');
+  const lines = ['aika;virta_mA;paine_bar;live_paino_kg;lukittu_paino_kg;tila;liput'];
+  for (let i = a; i < b; i++) {
+    const j = history.idx(i);
+    lines.push([
+      localTime(history.t[j]), csvNumber(history.ma[j], 3), csvNumber(history.p[j], 1),
+      csvNumber(history.live[j], 0), csvNumber(history.locked[j], 0),
+      STATE_NAMES[history.state[j]] || history.state[j], history.flags[j],
+    ].join(';'));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const d = new Date(history.t[history.idx(a)]);
+  const name = `kippivaaka_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  const url = URL.createObjectURL(blob);
+  const el = document.createElement('a');
+  el.href = url; el.download = name;
+  document.body.appendChild(el); el.click(); el.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast(`Tallennettu ${b - a} riviä`);
+}
+
+$('csvViewBtn').addEventListener('click', () => { const v = chart.viewRange(); exportCsv(v.from, v.to); });
+$('csvAllBtn').addEventListener('click', () => exportCsv(0, Date.now()));
+$('clearBtn').addEventListener('click', () => {
+  if (confirm('Poistetaanko koko tallennettu historia?')) { history.clear(); chart.draw(); }
+});
+
+// ---------------------------------------------------------------------------
+// Chart: pressure over time with lift/lock shading and locked weights
+// ---------------------------------------------------------------------------
+const RANGES = [
+  ['1 min', 60e3], ['10 min', 600e3], ['1 h', 3600e3], ['8 h', 8 * 3600e3], ['24 h', 24 * 3600e3],
+];
+
+const chart = {
+  span: 600e3,
+  endT: null,        // null = follow live
+  canvas: $('chart'),
+  dpr: 1,
+  hoverX: null,
+  init() {
+    const box = $('ranges');
+    for (const [label, ms] of RANGES) {
+      const b = document.createElement('button');
+      b.className = 'small' + (ms === this.span ? ' sel' : '');
+      b.textContent = label;
+      b.addEventListener('click', () => {
+        this.span = ms;
+        box.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b));
+        this.draw();
+      });
+      box.appendChild(b);
+    }
+    $('liveBtn').addEventListener('click', () => { this.endT = null; this.draw(); });
+    this.initPointer();
+    addEventListener('resize', () => this.resize());
+    setInterval(() => { if ($('view-chart').classList.contains('active')) this.draw(); }, 500);
+  },
+  viewRange() {
+    const to = this.endT ?? Date.now();
+    return { from: to - this.span, to };
+  },
+  initPointer() {
+    const wrap = $('chartWrap');
+    let drag = null;
+    wrap.addEventListener('pointerdown', (e) => {
+      drag = { x: e.clientX, endT: this.viewRange().to, moved: false };
+      wrap.setPointerCapture(e.pointerId);
+    });
+    wrap.addEventListener('pointermove', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      if (drag) {
+        const dx = e.clientX - drag.x;
+        if (Math.abs(dx) > 6) drag.moved = true;
+        if (drag.moved) {
+          const plotW = rect.width - 44;
+          const end = drag.endT - dx / plotW * this.span;
+          this.endT = end >= Date.now() ? null : end;
+          this.hoverX = null;
+          this.draw();
+          return;
+        }
+      }
+      if (e.pointerType === 'mouse') { this.hoverX = e.clientX - rect.left; this.draw(); }
+    });
+    wrap.addEventListener('pointerup', (e) => {
+      if (drag && !drag.moved) {
+        const rect = this.canvas.getBoundingClientRect();
+        this.hoverX = e.clientX - rect.left;
+        this.draw();
+      }
+      drag = null;
+    });
+    wrap.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { this.hoverX = null; this.draw(); } });
+  },
+  resize() {
+    const rect = this.canvas.getBoundingClientRect();
+    this.dpr = window.devicePixelRatio || 1;
+    this.canvas.width = Math.max(1, Math.round(rect.width * this.dpr));
+    this.canvas.height = Math.max(1, Math.round(rect.height * this.dpr));
+    this.draw();
+  },
+  draw() {
+    const c = this.canvas, ctx = c.getContext('2d');
+    const W = c.width / this.dpr, H = c.height / this.dpr;
+    if (W < 10) return;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const css = getComputedStyle(document.documentElement);
+    const col = (n) => css.getPropertyValue(n).trim();
+    const L = 40, R = 4, T = 10, B = 22;
+    const pw = W - L - R, ph = H - T - B;
+    const { from, to } = this.viewRange();
+    const a = Math.max(0, history.lowerBound(from) - 1), b = Math.min(history.count, history.lowerBound(to) + 1);
+    const x = (t) => L + (t - from) / (to - from) * pw;
+
+    // Y scale
+    let maxP = 50;
+    for (let i = a; i < b; i++) { const p = history.p[history.idx(i)]; if (p > maxP) maxP = p; }
+    const yMax = Math.ceil(maxP * 1.1 / 50) * 50;
+    const y = (p) => T + ph - Math.max(0, Math.min(p, yMax)) / yMax * ph;
+
+    // State shading
+    let runStart = null, runState = 0;
+    const shade = (t0, t1, s) => {
+      ctx.fillStyle = s === 2 ? col('--lock') : col('--lift');
+      const x0 = Math.max(L, x(t0)), x1 = Math.min(L + pw, x(t1));
+      if (x1 > x0) ctx.fillRect(x0, T, x1 - x0, ph);
+    };
+    for (let i = a; i < b; i++) {
+      const j = history.idx(i), s = history.state[j];
+      const gap = i > a && history.t[j] - history.t[history.idx(i - 1)] > 5000;
+      if (runStart !== null && (s !== runState || gap)) { shade(runStart, history.t[history.idx(i - 1)], runState); runStart = null; }
+      if (s !== 0 && runStart === null) { runStart = history.t[j]; runState = s; }
+    }
+    if (runStart !== null && b > a) shade(runStart, history.t[history.idx(b - 1)], runState);
+
+    // Grid
+    ctx.strokeStyle = col('--line');
+    ctx.fillStyle = col('--muted');
+    ctx.lineWidth = 1;
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const yStep = yMax <= 100 ? 25 : yMax <= 250 ? 50 : 100;
+    for (let p = 0; p <= yMax; p += yStep) {
+      ctx.beginPath(); ctx.moveTo(L, Math.round(y(p)) + 0.5); ctx.lineTo(L + pw, Math.round(y(p)) + 0.5); ctx.stroke();
+      ctx.fillText(p, L - 6, y(p));
+    }
+    ctx.save(); ctx.translate(10, T + ph / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center';
+    ctx.fillText('bar', 0, 0); ctx.restore();
+
+    const steps = [5e3, 10e3, 15e3, 30e3, 60e3, 120e3, 300e3, 600e3, 900e3, 1800e3, 3600e3, 7200e3, 10800e3, 21600e3];
+    const tStep = steps.find((s) => (to - from) / s <= Math.max(3, pw / 80)) || 21600e3;
+    const tzOffset = new Date().getTimezoneOffset() * 60e3;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (let t = Math.ceil((from - tzOffset) / tStep) * tStep + tzOffset; t <= to; t += tStep) {
+      const xx = Math.round(x(t)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, T + ph); ctx.stroke();
+      const d = new Date(t);
+      const label = tStep < 60e3 ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      ctx.fillText(label, xx, T + ph + 5);
+    }
+
+    // Pressure line: min/max per pixel column when there are more points than pixels
+    ctx.strokeStyle = col('--accent');
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    let pen = false, colX = -1, cMin = 0, cMax = 0, lastT = 0;
+    const flushCol = () => {
+      if (colX < 0) return;
+      if (!pen) { ctx.moveTo(colX, y(cMax)); pen = true; } else ctx.lineTo(colX, y(cMax));
+      if (cMin !== cMax) ctx.lineTo(colX, y(cMin));
+    };
+    for (let i = a; i < b; i++) {
+      const j = history.idx(i), t = history.t[j], p = history.p[j];
+      const bad = history.flags[j] & (FLAG.SENSOR | FLAG.INA);
+      if (bad || (i > a && t - lastT > 5000)) { flushCol(); colX = -1; pen = false; lastT = t; if (bad) continue; }
+      lastT = t;
+      const xx = Math.round(x(t));
+      if (xx !== colX) { flushCol(); colX = xx; cMin = cMax = p; }
+      else { if (p < cMin) cMin = p; if (p > cMax) cMax = p; }
+    }
+    flushCol();
+    ctx.save();
+    const path = new Path2D(); path.rect(L, T, pw, ph);
+    ctx.clip(path);
+    ctx.stroke();
+    ctx.restore();
+
+    // Locked weight labels at the moment of locking
+    ctx.fillStyle = col('--ok');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.font = '600 12px system-ui, sans-serif';
+    let lastLabelX = -1e9;
+    for (let i = Math.max(a, 1); i < b; i++) {
+      const j = history.idx(i), pj = history.idx(i - 1);
+      if (history.state[j] === 2 && history.state[pj] === 1) {
+        const xx = x(history.t[j]);
+        if (xx < L || xx > L + pw) continue;
+        const yy = y(history.p[j]);
+        ctx.beginPath(); ctx.arc(xx, yy, 3.5, 0, Math.PI * 2); ctx.fill();
+        const kg = history.locked[j];
+        if (Number.isFinite(kg) && xx - lastLabelX > 46) {
+          ctx.fillText(fmt1(kg / 1000) + ' t', Math.min(Math.max(xx, L + 24), L + pw - 24), yy - 6);
+          lastLabelX = xx;
+        }
+      }
+    }
+
+    // Readout
+    const ro = $('readout');
+    if (this.hoverX !== null && this.hoverX >= L && this.hoverX <= L + pw && b > a) {
+      const t = from + (this.hoverX - L) / pw * (to - from);
+      let i = Math.min(Math.max(history.lowerBound(t), a), b - 1);
+      if (i > a && Math.abs(history.t[history.idx(i - 1)] - t) < Math.abs(history.t[history.idx(i)] - t)) i--;
+      const j = history.idx(i);
+      const xx = x(history.t[j]);
+      ctx.strokeStyle = col('--muted'); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xx, T); ctx.lineTo(xx, T + ph); ctx.stroke();
+      const d = new Date(history.t[j]);
+      const lk = history.locked[j];
+      ro.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}  ${fmt1(history.p[j])} bar  ${STATE_NAMES[history.state[j]]}` +
+        (Number.isFinite(lk) ? `  ${fmt1(lk / 1000)} t` : '');
+      ro.classList.remove('hidden');
+    } else {
+      ro.classList.add('hidden');
+    }
+
+    $('liveBtn').classList.toggle('hidden', this.endT === null);
+    const hours = history.count ? (history.t[history.idx(history.count - 1)] - history.t[history.idx(0)]) / 3600e3 : 0;
+    $('historyInfo').textContent = history.count
+      ? `Tallennettu ${history.count.toLocaleString('fi-FI')} pistettä (${hours < 1 ? Math.round(hours * 60) + ' min' : fmt1(hours) + ' h'})`
+      : 'Ei tallennettua dataa';
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Demo mode: same simulated tipping cycle and state machine as the firmware
+// (firmware/lib/kippicore), so the page can be tried without the device.
+// ---------------------------------------------------------------------------
+const demo = {
+  timer: 0,
+  s: {
+    lift_min_bar: 10, spike_ignore_ms: 500, stable_window_ms: 1500, stable_band_bar: 1, down_settle_ms: 3000,
+    avg_window_ms: 500, shunt_ohm: 0.1, range_bar: 400, brightness: 100, sim: 1,
+    disp_mode: 0, disp_anode: 1, disp_reverse: 0, disp_swap: 0, p0: 0, k: 0,
+  },
+  cycle: { start: -1e9, n: 0, load: 40 },
+  sm: { state: 0, settled: true, belowHalfSince: null, liftStart: 0, feedStart: null, win: [], stable: false, mean: 0, hasLock: false, locked: 0 },
+  avg: [],
+  pressureAt(now) {
+    const c = this.cycle;
+    if (now - c.start >= 29500) {
+      c.start = now;
+      c.load = 40 + (c.n % 4 === 3 ? 0 : (3000 + Math.random() * 12000) / 100);
+      c.n++;
+    }
+    const t = now - c.start, L = c.load, peak = L * 1.3;
+    const nz = () => Math.random() + Math.random() + Math.random() - 1.5;
+    let p;
+    if (t < 8000) p = 1 + 0.3 * nz();
+    else if (t < 8800) p = 1 + (peak - 1) * (t - 8000) / 800;
+    else if (t < 9500) p = L + (peak - L) * Math.exp(-(t - 8800) / 150) + 0.3 * nz();
+    else if (t < 15500) p = L + 0.3 * nz();
+    else if (t < 21500) p = L * (1 + 0.15 * (Math.floor((t - 15500) / 2000) + 1)) + 0.6 * nz();
+    else if (t < 23500) { const f = (t - 21500) / 2000; p = L * 1.45 * (1 - f) + 52 * f + 0.6 * nz(); }
+    else if (t < 25500) p = 52 + 0.6 * nz();
+    else p = 4 - 2 * (t - 25500) / 4000 + 0.3 * nz();
+    return Math.max(0, p);
+  },
+  step(now, p) {
+    const s = this.s, m = this.sm;
+    const enterDown = () => { m.state = 0; m.settled = false; m.belowHalfSince = null; m.feedStart = null; m.stable = false; m.win = []; };
+    if (m.state === 0) {
+      if (p > s.lift_min_bar) {
+        const keep = m.hasLock && !m.settled;
+        m.state = keep ? 2 : 1;
+        if (!keep) m.hasLock = false;
+        m.liftStart = now; m.feedStart = null; m.stable = false; m.win = [];
+      }
+    } else if (p < s.lift_min_bar) enterDown();
+    if (m.state === 0) {
+      if (p < s.lift_min_bar / 2) {
+        if (m.belowHalfSince === null) m.belowHalfSince = now;
+        if (now - m.belowHalfSince >= s.down_settle_ms) m.settled = true;
+      } else m.belowHalfSince = null;
+      return;
+    }
+    if (now - m.liftStart < s.spike_ignore_ms) return;
+    if (m.feedStart === null) { m.feedStart = now; m.win = []; }
+    m.win.push([now, p]);
+    while (m.win.length && now - m.win[0][0] > s.stable_window_ms) m.win.shift();
+    const vals = m.win.map((w) => w[1]);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    m.stable = now - m.feedStart >= s.stable_window_ms && hi - lo <= 2 * s.stable_band_bar;
+    if (m.stable) m.mean = vals.reduce((x, y) => x + y, 0) / vals.length;
+    if (m.state === 1 && m.stable) { m.locked = m.mean; m.hasLock = true; m.state = 2; }
+  },
+  tick() {
+    const now = Date.now();
+    for (let k = 0; k < 6; k++) this.step(now - 165 + k * 33, this.pressureAt(now - 165 + k * 33));
+    const p = this.pressureAt(now);
+    this.avg.push([now, p]);
+    while (now - this.avg[0][0] > this.s.avg_window_ms) this.avg.shift();
+    const pAvg = this.avg.reduce((x, y) => x + y[1], 0) / this.avg.length;
+    const s = this.s, m = this.sm, cal = s.k > 0;
+    const canCal = m.state !== 0 && m.stable;
+    const lockedKg = cal && m.hasLock ? s.k * (m.locked - s.p0) : null;
+    let flags = FLAG.SIM;
+    if (!cal) flags |= FLAG.NOT_CAL;
+    if (lockedKg === null) flags |= FLAG.NO_LOCK;
+    if (canCal) flags |= FLAG.STABLE;
+    const buf = new DataView(new ArrayBuffer(12));
+    buf.setUint16(0, Math.round((4 + pAvg / s.range_bar * 16) * 1000), true);
+    buf.setInt16(2, Math.round(pAvg * 10), true);
+    buf.setInt32(4, cal ? Math.round(s.k * (pAvg - s.p0)) : 0, true);
+    buf.setInt16(8, lockedKg === null ? NO_LOCK_RAW : Math.round(lockedKg / 10), true);
+    buf.setUint8(10, m.state);
+    buf.setUint8(11, flags);
+    onPacket(buf);
+  },
+  settingsJson() { return { ...this.s }; },
+  command(text) {
+    const [verb, a1, a2] = text.trim().split(/\s+/);
+    const m = this.sm, s = this.s;
+    const canCal = m.state !== 0 && m.stable;
+    let r;
+    if (verb === 'TARE') {
+      if (!canCal) r = 'ERR NOT_STABLE'; else { s.p0 = m.mean; r = 'OK TARE ' + m.mean.toFixed(1); }
+    } else if (verb === 'CAL') {
+      const kg = parseFloat(a1);
+      if (!(kg > 0)) r = 'ERR SYNTAX';
+      else if (!canCal) r = 'ERR NOT_STABLE';
+      else if (m.mean - s.p0 < 1) r = 'ERR LOW_PRESSURE';
+      else { s.k = kg / (m.mean - s.p0); r = 'OK CAL ' + s.k.toFixed(2); }
+    } else if (verb === 'SET') {
+      if (!(a1 in SETTING_META)) r = 'ERR UNKNOWN_KEY';
+      else { s[a1] = parseFloat(String(a2).replace(',', '.')); r = 'OK SET'; }
+    } else if (verb === 'RESETCAL') { s.p0 = 0; s.k = 0; r = 'OK RESETCAL'; }
+    else if (verb === 'DISPTEST') r = 'OK DISPTEST';
+    else r = 'ERR UNKNOWN_CMD';
+    setTimeout(() => onReply(r), 80);
+  },
+};
+
+function startDemo() {
+  if (link.mode === 'ble') return;
+  link.mode = 'demo';
+  setConn('ok', 'Demotila');
+  $('connectCard').classList.add('hidden');
+  readSettings();
+  demo.timer = setInterval(() => demo.tick(), 200);
+}
+
+function stopDemo() {
+  clearInterval(demo.timer);
+  if (link.mode === 'demo') link.mode = null;
+}
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+if (!navigator.bluetooth) {
+  $('noBluetooth').classList.remove('hidden');
+  $('connectBtn').disabled = true;
+}
+chart.init();
+history.open().then(() => chart.draw());
+if (new URLSearchParams(location.search).has('demo')) startDemo();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
