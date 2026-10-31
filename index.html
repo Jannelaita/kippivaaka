@@ -71,6 +71,15 @@
   .pressure { display: flex; justify-content: space-between; align-items: baseline; }
   .pressure .value { font-size: 44px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .pressure .unit { color: var(--muted); font-size: 18px; margin-left: 4px; }
+  .pressure .value.big-now { font-size: clamp(64px, 22vw, 112px); font-weight: 700; line-height: 1; }
+  table.points { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-variant-numeric: tabular-nums; }
+  table.points th { text-align: left; color: var(--muted); font-weight: 500; font-size: 13px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  table.points td { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  table.points td:last-child { text-align: right; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .two label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 8px; width: 100%; }
+  select.changed { border-color: var(--warn); }
   .muted { color: var(--muted); font-size: 14px; }
   .pill { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 15px; letter-spacing: 0.05em; background: var(--panel-2); color: var(--muted); }
   .pill.lift { background: rgba(255, 181, 71, 0.18); color: var(--warn); }
@@ -163,6 +172,15 @@
   <!-- Käyrä -->
   <section id="view-chart" class="view">
     <div class="card">
+      <div class="pressure">
+        <div><span class="value big-now" id="chartPressure">–</span><span class="unit">bar</span></div>
+        <div style="text-align:right">
+          <span class="pill" id="chartState">–</span>
+          <div class="muted" id="chartWeight" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
       <div class="ranges" id="ranges"></div>
       <div class="chart-wrap" id="chartWrap">
         <canvas id="chart"></canvas>
@@ -205,21 +223,45 @@
         <div class="num">2</div>
         <div class="grow">
           <h3>Tunnettu kuorma</h3>
-          <p>Laske lava, lastaa punnittu kuorma ja nosta lava irti rungosta. Syötä kuorman paino kilogrammoina ja tallenna, kun tila on VAKAA.</p>
+          <p>Laske lava, lastaa punnittu kuorma ja nosta lava irti rungosta. Syötä kuorman paino kilogrammoina, kun tila on VAKAA.</p>
           <input type="number" id="calKg" inputmode="numeric" placeholder="Kuorman paino, kg" min="1" step="10">
           <div class="row" style="margin:12px 0">
             <span class="pill cal-state">–</span>
             <span class="muted cal-pressure"></span>
           </div>
-          <button id="calLoadBtn" class="primary" disabled>Tallenna kalibrointi</button>
+          <div class="row">
+            <button id="calAddBtn" class="primary grow" disabled>Lisää kalibrointipisteeksi</button>
+            <button id="calLoadBtn" class="grow" disabled>Tallenna ainoaksi pisteeksi</button>
+          </div>
+          <p style="margin-top:12px">Useampi piste eri kuormilla (esim. puolikas ja täysi kuorma) parantaa tarkkuutta. Paino lasketaan pisteiden välillä suoraa viivaa pitkin.</p>
         </div>
       </div>
+    </div>
+    <div class="card">
+      <h2>Kalibrointipisteet</h2>
+      <div id="pointsTable"><p class="muted">Ei pisteitä.</p></div>
+      <p class="muted" style="margin:0 0 8px">Lisää tunnettu piste käsin (paine noston alussa ja kuorman paino):</p>
+      <div class="two">
+        <div><label for="ptBar">Paine, bar</label><input type="number" id="ptBar" inputmode="decimal" step="0.1"></div>
+        <div><label for="ptKg">Kuorma, kg</label><input type="number" id="ptKg" inputmode="numeric" step="10"></div>
+      </div>
+      <button id="ptAddBtn" class="small">Lisää piste</button>
+    </div>
+    <div class="card">
+      <h2>Syötä arvot käsin</h2>
+      <div class="two">
+        <div><label for="manP0">Tarapaine p0, bar</label><input type="number" id="manP0" inputmode="decimal" step="0.1"></div>
+        <div><label for="manK">Kerroin k, kg/bar</label><input type="number" id="manK" inputmode="decimal" step="0.01"></div>
+      </div>
+      <button id="manSaveBtn" class="small">Tallenna arvot</button>
+      <p class="muted">Käsin syötetty kerroin korvaa kalibrointipisteet (paino = k × (paine − p0)). Pelkän tarapaineen muuttaminen säilyttää pisteet.</p>
     </div>
     <div class="card">
       <h2>Tallennetut arvot</h2>
       <dl class="kv">
         <dt>Tarapaine p0</dt><dd id="calP0">–</dd>
         <dt>Kerroin k</dt><dd id="calK">–</dd>
+        <dt>Malli</dt><dd id="calModel">–</dd>
       </dl>
       <button id="resetCalBtn" class="small" style="margin-top:14px">Nollaa kalibrointi</button>
     </div>
@@ -273,11 +315,12 @@ const SETTING_META = {
   shunt_ohm:        { label: 'Shunttivastus', unit: 'Ω', step: 0.01 },
   range_bar:        { label: 'Anturin mittausalue', unit: 'bar', step: 10 },
   brightness:       { label: 'Näytön kirkkaus', unit: '%', step: 10, help: 'Vaatii OE-pinnin kytkennän' },
-  sim:              { label: 'Simulaatio', unit: '0/1', step: 1, help: '1 = generoitu nostosykli, 0 = oikea anturi' },
-  disp_mode:        { label: 'Näyttötyyppi', unit: '0/1', step: 1, help: '0 = staattinen, 1 = multipleksattu' },
-  disp_anode:       { label: 'Yhteinen anodi', unit: '0/1', step: 1, help: '1 = anodi, 0 = katodi' },
-  disp_reverse:     { label: 'Numerot käänteisesti', unit: '0/1', step: 1 },
-  disp_swap:        { label: 'Vaihda näyttöjen paikat', unit: '0/1', step: 1 },
+  sim:              { label: 'Simulaatio', options: ['Pois', 'Päällä'], help: 'Päällä = generoitu nostosykli ilman anturia' },
+  disp1_show:       { label: 'Näyttö 1', options: ['Paine', 'Paino (t)', 'Tyhjä'], help: 'ESP32:een kytketty näyttö. Paine baareina, paino tonneina 1 desimaalilla' },
+  disp2_show:       { label: 'Näyttö 2', options: ['Paine', 'Paino (t)', 'Tyhjä'], help: 'Ketjussa toisena oleva näyttö' },
+  disp_mode:        { label: 'Näyttötyyppi', options: ['Staattinen', 'Multiplex'], help: '3 × 74HC595 = staattinen, 2 = multiplex' },
+  disp_anode:       { label: 'Yhteinen napa', options: ['Katodi', 'Anodi'] },
+  disp_reverse:     { label: 'Numerojärjestys', options: ['Normaali', 'Käänteinen'] },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -410,6 +453,9 @@ const REPLY_TEXT = {
   'ERR RANGE': 'Arvo on sallitun alueen ulkopuolella',
   'ERR UNKNOWN_KEY': 'Tuntematon asetus',
   'ERR SYNTAX': 'Virheellinen komento',
+  'ERR FULL': 'Kalibrointipisteitä voi olla enintään 8 – poista ensin jokin',
+  'ERR INDEX': 'Pistettä ei löydy',
+  'OK CALDEL': 'Kalibrointipiste poistettu',
   'OK RESETCAL': 'Kalibrointi nollattu',
   'OK DISPTEST': 'Näyttötesti käynnissä',
 };
@@ -418,7 +464,8 @@ function onReply(text) {
   let msg = REPLY_TEXT[text];
   const arg = (text.split(' ')[2] || '').replace('.', ',');
   if (!msg && text.startsWith('OK TARE')) msg = 'Tara tallennettu: ' + arg + ' bar';
-  if (!msg && text.startsWith('OK CAL')) msg = 'Kalibrointi tallennettu: k = ' + arg + ' kg/bar';
+  if (!msg && text.startsWith('OK CALADD')) msg = `Kalibrointipiste lisätty (${arg} kpl)`;
+  if (!msg && text.startsWith('OK CAL ')) msg = 'Kalibrointi tallennettu: k = ' + arg + ' kg/bar';
   if (!msg && text === 'OK SET') msg = 'Asetus tallennettu';
   toast(msg || text);
   if (text.startsWith('OK') && text !== 'OK DISPTEST') readSettings();
@@ -474,6 +521,10 @@ function renderMeasurement(m) {
   const pill = $('statePill');
   pill.textContent = stable && m.state !== 0 ? (m.state === 2 ? 'LUKITTU' : 'VAKAA') : STATE_NAMES[m.state] || '?';
   pill.className = 'pill' + (m.state === 1 ? ' lift' : m.state === 2 ? ' lock' : '');
+  $('chartPressure').textContent = $('pressureValue').textContent;
+  $('chartState').textContent = pill.textContent;
+  $('chartState').className = pill.className;
+  $('chartWeight').textContent = m.lockedKg !== null ? 'Lukittu ' + fmt1(m.lockedKg / 1000) + ' t' : '';
   $('liveWeight').textContent = f & FLAG.NOT_CAL ? '' : 'Live-paino: ' + fmt1(m.liveKg / 1000) + ' t';
   $('simPill').classList.toggle('hidden', !(f & FLAG.SIM));
   $('tareBtn').disabled = !stable;
@@ -494,7 +545,9 @@ function renderMeasurement(m) {
   });
   document.querySelectorAll('.cal-pressure').forEach((el) => { el.textContent = sensorBad ? '' : fmt1(m.pressure) + ' bar'; });
   $('calTareBtn').disabled = !stable;
-  $('calLoadBtn').disabled = !stable || !(parseFloat($('calKg').value) > 0);
+  const kgOk = parseFloat($('calKg').value) > 0;
+  $('calLoadBtn').disabled = !stable || !kgOk;
+  $('calAddBtn').disabled = !stable || !kgOk;
 }
 
 // ---------------------------------------------------------------------------
@@ -502,31 +555,54 @@ function renderMeasurement(m) {
 // ---------------------------------------------------------------------------
 function onSettings(s) {
   link.settings = s;
+  const pts = s.pts || [];
   $('calP0').textContent = s.p0 !== undefined ? fmt1(s.p0) + ' bar' : '–';
   $('calK').textContent = s.k > 0 ? s.k.toFixed(2).replace('.', ',') + ' kg/bar' : 'ei kalibroitu';
+  $('calModel').textContent = pts.length >= 2 ? `${pts.length} pistettä, paloittain lineaarinen`
+    : pts.length === 1 ? '1 piste, lineaarinen' : s.k > 0 ? 'käsin syötetty k, lineaarinen' : '–';
+  $('manP0').value = s.p0 ?? '';
+  $('manK').value = s.k > 0 ? +s.k.toFixed(3) : '';
 
+  // Calibration points, shown as absolute pressure
+  $('pointsTable').innerHTML = pts.length
+    ? `<table class="points"><tr><th>#</th><th>Paine</th><th>Kuorma</th><th>kg/bar</th><th></th></tr>${pts.map(([dp, kg], i) =>
+      `<tr><td>${i + 1}</td><td>${fmt1(s.p0 + dp)} bar</td><td>${Math.round(kg).toLocaleString('fi-FI')} kg</td>
+       <td class="muted">${(kg / dp).toFixed(1).replace('.', ',')}</td>
+       <td><button class="small" data-del="${i + 1}">Poista</button></td></tr>`).join('')}</table>`
+    : '<p class="muted">Ei pisteitä.</p>';
+  $('pointsTable').querySelectorAll('[data-del]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (confirm(`Poistetaanko piste ${b.dataset.del}?`)) sendCommand('CALDEL ' + b.dataset.del);
+    });
+  });
+
+  // Settings form: selects for choices, number inputs for values
   const form = $('settingsForm');
   form.innerHTML = '';
   for (const [key, meta] of Object.entries(SETTING_META)) {
     if (!(key in s)) continue;
     const row = document.createElement('div');
     row.className = 'settings-row';
-    row.innerHTML = `<label for="set-${key}">${meta.label} <span class="muted">(${meta.unit})</span>${meta.help ? `<small>${meta.help}</small>` : ''}</label>
-      <input type="number" id="set-${key}" data-key="${key}" step="${meta.step}" value="${s[key]}" inputmode="decimal">`;
+    const label = `<label for="set-${key}">${meta.label}${meta.unit ? ` <span class="muted">(${meta.unit})</span>` : ''}${meta.help ? `<small>${meta.help}</small>` : ''}</label>`;
+    const control = meta.options
+      ? `<select id="set-${key}" data-key="${key}">${meta.options.map((o, i) => `<option value="${i}"${i === s[key] ? ' selected' : ''}>${o}</option>`).join('')}</select>`
+      : `<input type="number" id="set-${key}" data-key="${key}" step="${meta.step}" value="${s[key]}" inputmode="decimal">`;
+    if (meta.options) row.style.gridTemplateColumns = '1fr 1.2fr';
+    row.innerHTML = label + control;
     form.appendChild(row);
   }
-  form.querySelectorAll('input').forEach((input) => {
-    input.addEventListener('input', () => {
-      input.classList.toggle('changed', parseFloat(input.value) !== link.settings[input.dataset.key]);
-      $('saveSettingsBtn').disabled = !form.querySelector('input.changed');
+  form.querySelectorAll('input, select').forEach((el) => {
+    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+      el.classList.toggle('changed', parseFloat(el.value) !== link.settings[el.dataset.key]);
+      $('saveSettingsBtn').disabled = !form.querySelector('.changed');
     });
   });
   $('saveSettingsBtn').disabled = true;
 }
 
 $('saveSettingsBtn').addEventListener('click', async () => {
-  for (const input of $('settingsForm').querySelectorAll('input.changed')) {
-    await sendCommand(`SET ${input.dataset.key} ${input.value}`);
+  for (const el of $('settingsForm').querySelectorAll('.changed')) {
+    await sendCommand(`SET ${el.dataset.key} ${el.value}`);
   }
 });
 $('dispTestBtn').addEventListener('click', () => sendCommand('DISPTEST'));
@@ -540,7 +616,30 @@ $('tareBtn').addEventListener('click', () => sendCommand('TARE'));
 $('calTareBtn').addEventListener('click', () => sendCommand('TARE'));
 $('calLoadBtn').addEventListener('click', () => {
   const kg = parseFloat($('calKg').value);
-  if (kg > 0) sendCommand('CAL ' + kg);
+  const pts = (link.settings && link.settings.pts) || [];
+  if (!(kg > 0)) return;
+  if (pts.length > 1 && !confirm(`Tämä korvaa nykyiset ${pts.length} kalibrointipistettä. Jatketaanko?`)) return;
+  sendCommand('CAL ' + kg);
+});
+$('calAddBtn').addEventListener('click', () => {
+  const kg = parseFloat($('calKg').value);
+  if (kg > 0) sendCommand('CALADD ' + kg);
+});
+$('ptAddBtn').addEventListener('click', () => {
+  const bar = parseFloat($('ptBar').value), kg = parseFloat($('ptKg').value);
+  if (!(bar > 0) || !(kg > 0)) return toast('Syötä paine ja kuorma');
+  sendCommand(`CALPT ${bar} ${kg}`);
+  $('ptBar').value = ''; $('ptKg').value = '';
+});
+$('manSaveBtn').addEventListener('click', async () => {
+  const s = link.settings || {};
+  const p0 = parseFloat($('manP0').value), k = parseFloat($('manK').value);
+  const p0Changed = Number.isFinite(p0) && Math.abs(p0 - s.p0) > 1e-3;
+  const kChanged = Number.isFinite(k) && k > 0 && Math.abs(k - s.k) > 1e-3;
+  if (!p0Changed && !kChanged) return toast('Ei muutoksia');
+  if (kChanged && (s.pts || []).length && !confirm('Käsin syötetty kerroin poistaa kalibrointipisteet. Jatketaanko?')) return;
+  if (p0Changed) await sendCommand('SET p0 ' + p0);
+  if (kChanged) await sendCommand('SET k ' + k);
 });
 $('calKg').addEventListener('input', () => { if (link.last) renderMeasurement(link.last); });
 $('resetCalBtn').addEventListener('click', () => {
@@ -887,7 +986,34 @@ const demo = {
   s: {
     lift_min_bar: 10, spike_ignore_ms: 500, stable_window_ms: 1500, stable_band_bar: 1, down_settle_ms: 3000,
     avg_window_ms: 500, shunt_ohm: 0.1, range_bar: 400, brightness: 100, sim: 1,
-    disp_mode: 0, disp_anode: 1, disp_reverse: 0, disp_swap: 0, p0: 0, k: 0,
+    disp1_show: 0, disp2_show: 1, disp_mode: 0, disp_anode: 1, disp_reverse: 0, p0: 0, k: 0, pts: [],
+  },
+  // Same model as weightFromPressure() in firmware/lib/kippicore/src/settings.cpp
+  weight(p) {
+    const s = this.s, dp = p - s.p0, pts = s.pts;
+    if (pts.length < 2) return s.k * dp;
+    let x0 = 0, y0 = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      if (dp <= x1 || i === pts.length - 1) return x1 - x0 < 1e-3 ? y1 : y0 + (y1 - y0) * (dp - x0) / (x1 - x0);
+      x0 = x1; y0 = y1;
+    }
+    return 0;
+  },
+  addPoint(dp, kg) {
+    const pts = this.s.pts;
+    const near = pts.findIndex(([x]) => Math.abs(x - dp) < 0.5);
+    if (near >= 0) pts[near] = [dp, kg];
+    else if (pts.length >= 8) return false;
+    else pts.push([dp, kg]);
+    pts.sort((a, b) => a[0] - b[0]);
+    this.updateSlope();
+    return true;
+  },
+  updateSlope() {
+    const pts = this.s.pts;
+    const sxy = pts.reduce((a, [x, y]) => a + x * y, 0), sxx = pts.reduce((a, [x]) => a + x * x, 0);
+    this.s.k = sxx > 0 ? sxy / sxx : 0;
   },
   cycle: { start: -1e9, n: 0, load: 40 },
   sm: { state: 0, settled: true, belowHalfSince: null, liftStart: 0, feedStart: null, win: [], stable: false, mean: 0, hasLock: false, locked: 0 },
@@ -947,9 +1073,9 @@ const demo = {
     this.avg.push([now, p]);
     while (now - this.avg[0][0] > this.s.avg_window_ms) this.avg.shift();
     const pAvg = this.avg.reduce((x, y) => x + y[1], 0) / this.avg.length;
-    const s = this.s, m = this.sm, cal = s.k > 0;
+    const s = this.s, m = this.sm, cal = s.k > 0 || s.pts.length > 0;
     const canCal = m.state !== 0 && m.stable;
-    const lockedKg = cal && m.hasLock ? s.k * (m.locked - s.p0) : null;
+    const lockedKg = cal && m.hasLock ? this.weight(m.locked) : null;
     let flags = FLAG.SIM;
     if (!cal) flags |= FLAG.NOT_CAL;
     if (lockedKg === null) flags |= FLAG.NO_LOCK;
@@ -957,30 +1083,44 @@ const demo = {
     const buf = new DataView(new ArrayBuffer(12));
     buf.setUint16(0, Math.round((4 + pAvg / s.range_bar * 16) * 1000), true);
     buf.setInt16(2, Math.round(pAvg * 10), true);
-    buf.setInt32(4, cal ? Math.round(s.k * (pAvg - s.p0)) : 0, true);
+    buf.setInt32(4, cal ? Math.round(this.weight(pAvg)) : 0, true);
     buf.setInt16(8, lockedKg === null ? NO_LOCK_RAW : Math.round(lockedKg / 10), true);
     buf.setUint8(10, m.state);
     buf.setUint8(11, flags);
     onPacket(buf);
   },
-  settingsJson() { return { ...this.s }; },
+  settingsJson() { return { ...this.s, pts: this.s.pts.map((p) => [...p]) }; },
   command(text) {
     const [verb, a1, a2] = text.trim().split(/\s+/);
     const m = this.sm, s = this.s;
     const canCal = m.state !== 0 && m.stable;
+    const num = (v) => parseFloat(String(v).replace(',', '.'));
     let r;
     if (verb === 'TARE') {
       if (!canCal) r = 'ERR NOT_STABLE'; else { s.p0 = m.mean; r = 'OK TARE ' + m.mean.toFixed(1); }
-    } else if (verb === 'CAL') {
-      const kg = parseFloat(a1);
+    } else if (verb === 'CAL' || verb === 'CALADD') {
+      const kg = num(a1);
       if (!(kg > 0)) r = 'ERR SYNTAX';
       else if (!canCal) r = 'ERR NOT_STABLE';
       else if (m.mean - s.p0 < 1) r = 'ERR LOW_PRESSURE';
-      else { s.k = kg / (m.mean - s.p0); r = 'OK CAL ' + s.k.toFixed(2); }
+      else {
+        if (verb === 'CAL') s.pts = [];
+        if (!this.addPoint(m.mean - s.p0, kg)) r = 'ERR FULL';
+        else r = verb === 'CAL' ? 'OK CAL ' + s.k.toFixed(2) : 'OK CALADD ' + s.pts.length;
+      }
+    } else if (verb === 'CALPT') {
+      const bar = num(a1), kg = num(a2);
+      if (!(kg > 0) || !Number.isFinite(bar)) r = 'ERR SYNTAX';
+      else if (bar - s.p0 < 1) r = 'ERR LOW_PRESSURE';
+      else r = this.addPoint(bar - s.p0, kg) ? 'OK CALADD ' + s.pts.length : 'ERR FULL';
+    } else if (verb === 'CALDEL') {
+      const i = parseInt(a1, 10) - 1;
+      if (!(i >= 0 && i < s.pts.length)) r = 'ERR INDEX';
+      else { s.pts.splice(i, 1); this.updateSlope(); r = 'OK CALDEL'; }
     } else if (verb === 'SET') {
-      if (!(a1 in SETTING_META)) r = 'ERR UNKNOWN_KEY';
-      else { s[a1] = parseFloat(String(a2).replace(',', '.')); r = 'OK SET'; }
-    } else if (verb === 'RESETCAL') { s.p0 = 0; s.k = 0; r = 'OK RESETCAL'; }
+      if (!(a1 in SETTING_META) && a1 !== 'p0' && a1 !== 'k') r = 'ERR UNKNOWN_KEY';
+      else { s[a1] = num(a2); if (a1 === 'k') s.pts = []; r = 'OK SET'; }
+    } else if (verb === 'RESETCAL') { s.p0 = 0; s.k = 0; s.pts = []; r = 'OK RESETCAL'; }
     else if (verb === 'DISPTEST') r = 'OK DISPTEST';
     else r = 'ERR UNKNOWN_CMD';
     setTimeout(() => onReply(r), 80);
