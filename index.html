@@ -198,6 +198,7 @@
         <button id="csvAllBtn" class="grow">CSV: kaikki</button>
       </div>
       <p class="muted">Sivu tallentaa mittauksen (5 kertaa sekunnissa) puhelimen muistiin aina, kun yhteys on päällä. Viimeiset 24 tuntia säilyvät, vaikka sivu suljetaan. CSV aukeaa Excelissä (puolipiste-erotin, desimaalipilkku).</p>
+      <p class="muted hidden" id="captiveHint">Jos lataus ei toimi WiFin kirjautumisikkunassa, avaa Chromessa osoite <b>http://192.168.4.1</b> (puhelin pysyy Kippivaaka-WiFissä).</p>
       <button id="clearBtn" class="small">Tyhjennä historia</button>
     </div>
   </section>
@@ -355,7 +356,7 @@ document.querySelectorAll('nav button').forEach((btn) => {
 // Device link: real BLE or the built-in demo
 // ---------------------------------------------------------------------------
 const link = {
-  mode: null,          // 'ble' | 'demo' | null
+  mode: null,          // 'wifi' (page served by the ESP32) | 'ble' | 'demo' | null
   device: null,
   chars: {},
   gattQueue: Promise.resolve(),
@@ -426,10 +427,57 @@ function scheduleReconnect() {
   }, delay);
 }
 
+// WiFi: the page was loaded from the ESP32's own access point (captive portal)
+// and talks to it over plain HTTP. The measurement is polled 5 times a second.
+const wifi = {
+  timer: 0,
+  busy: false,
+  fails: 0,
+  async poll() {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      const r = await fetch('/api/m', { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      onPacket(new DataView(await r.arrayBuffer()));
+      if (this.fails >= 3) readSettings();
+      if (this.fails) setConn('ok', 'Yhdistetty (WiFi)');
+      this.fails = 0;
+    } catch (e) {
+      if (++this.fails === 3) setConn('err', 'Ei yhteyttä – onko puhelin Kippivaaka-WiFissä?');
+    } finally {
+      this.busy = false;
+    }
+  },
+};
+
+async function detectWifi() {
+  if (location.protocol !== 'http:') return false;
+  try {
+    const r = await fetch('/api/settings', { cache: 'no-store' });
+    if (!r.ok) return false;
+    const s = await r.json();
+    link.mode = 'wifi';
+    setConn('ok', 'Yhdistetty (WiFi)');
+    $('connectCard').classList.add('hidden');
+    $('noBluetooth').classList.add('hidden');
+    $('captiveHint').classList.remove('hidden');
+    onSettings(s);
+    wifi.timer = setInterval(() => wifi.poll(), 200);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function readSettings() {
   if (link.mode === 'demo') return onSettings(demo.settingsJson());
-  if (link.mode !== 'ble') return;
   try {
+    if (link.mode === 'wifi') {
+      const r = await fetch('/api/settings', { cache: 'no-store' });
+      return onSettings(await r.json());
+    }
+    if (link.mode !== 'ble') return;
     const value = await gatt(() => link.chars.settings.readValue());
     onSettings(JSON.parse(new TextDecoder().decode(value)));
   } catch (e) {
@@ -439,6 +487,15 @@ async function readSettings() {
 
 async function sendCommand(text) {
   if (link.mode === 'demo') return demo.command(text);
+  if (link.mode === 'wifi') {
+    try {
+      const r = await fetch('/api/cmd', { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain' } });
+      onReply(await r.text());
+    } catch (e) {
+      toast('Komento epäonnistui – ei yhteyttä vaakaan');
+    }
+    return;
+  }
   if (link.mode !== 'ble') return toast('Ei yhteyttä');
   try {
     await gatt(() => link.chars.command.writeValueWithResponse(new TextEncoder().encode(text)));
@@ -1128,7 +1185,7 @@ const demo = {
 };
 
 function startDemo() {
-  if (link.mode === 'ble') return;
+  if (link.mode === 'ble' || link.mode === 'wifi') return;
   link.mode = 'demo';
   setConn('ok', 'Demotila');
   $('connectCard').classList.add('hidden');
@@ -1144,13 +1201,16 @@ function stopDemo() {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
-if (!navigator.bluetooth) {
-  $('noBluetooth').classList.remove('hidden');
-  $('connectBtn').disabled = true;
-}
 chart.init();
 history.open().then(() => chart.draw());
-if (new URLSearchParams(location.search).has('demo')) startDemo();
+detectWifi().then((onDevice) => {
+  if (onDevice) return;
+  if (!navigator.bluetooth) {
+    $('noBluetooth').classList.remove('hidden');
+    $('connectBtn').disabled = true;
+  }
+  if (new URLSearchParams(location.search).has('demo')) startDemo();
+});
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
 </script>
 </body>
