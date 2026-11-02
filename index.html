@@ -317,6 +317,8 @@ const SETTING_META = {
   range_bar:        { label: 'Anturin mittausalue', unit: 'bar', step: 10 },
   brightness:       { label: 'Näytön kirkkaus', unit: '%', step: 10, help: 'Vaatii OE-pinnin kytkennän' },
   sim:              { label: 'Simulaatio', options: ['Pois', 'Päällä'], help: 'Päällä = generoitu nostosykli ilman anturia' },
+  wifi:             { label: 'WiFi', options: ['Pois', 'Päällä'], help: 'Oma verkko Kippivaaka, sovellus osoitteessa 192.168.4.1. Muutos käynnistää vaa\'an uudelleen' },
+  ble:              { label: 'Bluetooth', options: ['Pois', 'Päällä'], help: 'Yhteys GitHub-sivulta Chromella. Muutos käynnistää vaa\'an uudelleen' },
   disp1_show:       { label: 'Näyttö 1', options: ['Paine', 'Paino (t)', 'Tyhjä'], help: 'ESP32:een kytketty näyttö. Paine baareina, paino tonneina 1 desimaalilla' },
   disp2_show:       { label: 'Näyttö 2', options: ['Paine', 'Paino (t)', 'Tyhjä'], help: 'Ketjussa toisena oleva näyttö' },
   disp_mode:        { label: 'Näyttötyyppi', options: ['Staattinen', 'Multiplex'], help: '3 × 74HC595 = staattinen, 2 = multiplex' },
@@ -515,6 +517,8 @@ const REPLY_TEXT = {
   'OK CALDEL': 'Kalibrointipiste poistettu',
   'OK RESETCAL': 'Kalibrointi nollattu',
   'OK DISPTEST': 'Näyttötesti käynnissä',
+  'OK RESTART': 'Tallennettu – vaaka käynnistyy uudelleen',
+  'ERR LAST_LINK': 'WiFi ja Bluetooth eivät voi olla molemmat pois päältä',
 };
 
 function onReply(text) {
@@ -658,7 +662,15 @@ function onSettings(s) {
 }
 
 $('saveSettingsBtn').addEventListener('click', async () => {
-  for (const el of $('settingsForm').querySelectorAll('.changed')) {
+  const changed = [...$('settingsForm').querySelectorAll('.changed')];
+  const value = (key) => { const el = changed.find((e) => e.dataset.key === key); return el ? el.value : null; };
+  // Turning off the link this page uses drops the connection after the restart.
+  const ownKey = link.mode === 'wifi' ? 'wifi' : link.mode === 'ble' ? 'ble' : null;
+  if (ownKey && value(ownKey) === '0' &&
+      !confirm(`${ownKey === 'wifi' ? 'WiFi' : 'Bluetooth'} on se yhteys, jota tämä sivu nyt käyttää. Yhteys katkeaa, kun vaaka käynnistyy uudelleen. Jatketaanko?`)) return;
+  // Link switches restart the scale, so send them last.
+  changed.sort((a, b) => ['wifi', 'ble'].includes(a.dataset.key) - ['wifi', 'ble'].includes(b.dataset.key));
+  for (const el of changed) {
     await sendCommand(`SET ${el.dataset.key} ${el.value}`);
   }
 });
@@ -1043,7 +1055,7 @@ const demo = {
   s: {
     lift_min_bar: 10, spike_ignore_ms: 500, stable_window_ms: 1500, stable_band_bar: 1, down_settle_ms: 3000,
     avg_window_ms: 500, shunt_ohm: 0.1, range_bar: 400, brightness: 100, sim: 1,
-    disp1_show: 0, disp2_show: 1, disp_mode: 0, disp_anode: 1, disp_reverse: 0, p0: 0, k: 0, pts: [],
+    disp1_show: 0, disp2_show: 1, disp_mode: 0, disp_anode: 1, disp_reverse: 0, wifi: 1, ble: 1, p0: 0, k: 0, pts: [],
   },
   // Same model as weightFromPressure() in firmware/lib/kippicore/src/settings.cpp
   weight(p) {

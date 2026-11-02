@@ -1,5 +1,5 @@
-// Offline cache for the PWA. Bump CACHE when the files change.
-const CACHE = 'kippivaaka-v3';
+﻿// Offline cache for the PWA. Bump CACHE when the files change.
+const CACHE = 'kippivaaka-v4';
 const FILES = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (event) => {
